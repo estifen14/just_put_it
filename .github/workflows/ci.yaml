@@ -18,11 +18,11 @@ jobs:
 
       - name: Static Code Analysis (SonarCloud)
         run: |
-          echo "Placeholder: Running SonarCloud static code analysis"
+          echo "Placeholder: Running SonarCloud analysis"
 
       - name: Container Vulnerability Scan (Trivy)
         run: |
-          echo "Placeholder: Running Trivy container vulnerability scan"
+          echo "Placeholder: Running Trivy scan"
 
       - name: Terraform Deployment (LocalStack)
         run: |
