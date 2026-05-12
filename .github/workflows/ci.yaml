@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Compile Code (Java/Python)
+        run: |
+          echo "Placeholder: Compiling Java/Python code"
+
+      - name: Static Code Analysis (SonarCloud)
+        run: |
+          echo "Placeholder: Running SonarCloud static code analysis"
+
+      - name: Container Vulnerability Scan (Trivy)
+        run: |
+          echo "Placeholder: Running Trivy container vulnerability scan"
+
+      - name: Terraform Deployment (LocalStack)
+        run: |
+          echo "Placeholder: Deploying to LocalStack via Terraform"
