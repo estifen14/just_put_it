@@ -29,6 +29,7 @@ Start LocalStack using Docker. We will expose the necessary ports and enable the
 
 ```bash
 docker run --rm -d -p 4566:4566 -p 4510-4559:4510-4559 \
+  -e LOCALSTACK_AUTH_TOKEN="your_token_here" \
   -e SERVICES=rds \
   -e DOCKER_HOST="unix:///var/run/docker.sock" \
   -v /var/run/docker.sock:/var/run/docker.sock \

@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# IDE Files
+.idea/
+*.iml
+.vscode/
+
+# Java/Maven
+target/
+dependency-reduced-pom.xml
+*.class
+
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.lock.hcl
+*.tfvars
+
+# General
+*.log
+.env
+hs_err_pid*
