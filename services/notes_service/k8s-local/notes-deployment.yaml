@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notes-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notes-service
+  template:
+    metadata:
+      labels:
+        app: notes-service
+    spec:
+      containers:
+        - name: notes-service-container
+          image: notes-service:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres-service:5432/just_put_it
