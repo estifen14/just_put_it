@@ -36,10 +36,8 @@ kind load docker-image notes-service:v1 --name just-put-it-cluster
 ### Step 2: Deploy the Database (Pre-requisite)
 Spring Boot will crash immediately if it cannot connect to its database. Before deploying the app, we must deploy PostgreSQL.
 
-Create a file named `postgres.yaml` (if it doesn't exist already) or apply the existing one:
-
 ```bash
-kubectl apply -f postgres.yaml
+kubectl apply -f k8s-local/postgres.yaml
 ```
 *Note: This creates a Deployment and a Service named `postgres-service`.*
 
@@ -47,8 +45,8 @@ kubectl apply -f postgres.yaml
 Now, apply the deployment and service manifests for the `notes_service`. Ensure your `notes-deployment.yaml` points its `SPRING_DATASOURCE_URL` to `jdbc:postgresql://postgres-service:5432/just_put_it`.
 
 ```bash
-kubectl apply -f notes-deployment.yaml
-kubectl apply -f notes-service.yaml
+kubectl apply -f k8s-local/notes-deployment.yaml
+kubectl apply -f k8s-local/notes-service.yaml
 ```
 
 **Verification:**
