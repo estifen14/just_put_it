@@ -37,7 +37,7 @@ kind load docker-image notes-service:v1 --name just-put-it-cluster
 Spring Boot will crash immediately if it cannot connect to its database. Before deploying the app, we must deploy PostgreSQL.
 
 ```bash
-kubectl apply -f k8s-local/postgres.yaml
+helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update && helm install my-postgres bitnami/postgresql --set fullnameOverride=postgres-service --set auth.postgresPassword=postgres --set auth.database=just_put_it --set primary.persistence.enabled=false
 ```
 *Note: This creates a Deployment and a Service named `postgres-service`.*
 
@@ -45,8 +45,8 @@ kubectl apply -f k8s-local/postgres.yaml
 Now, apply the deployment and service manifests for the `notes_service`. Ensure your `notes-deployment.yaml` points its `SPRING_DATASOURCE_URL` to `jdbc:postgresql://postgres-service:5432/just_put_it`.
 
 ```bash
-kubectl apply -f k8s-local/notes-deployment.yaml
-kubectl apply -f k8s-local/notes-service.yaml
+kubectl apply -f services/notes_service/k8s-local/notes-deployment.yaml
+kubectl apply -f services/notes_service/k8s-local/notes-service.yaml
 ```
 
 **Verification:**
@@ -76,3 +76,21 @@ curl -i -X POST http://localhost:8888/api/v1/auth/register \
 
 You should receive a `201 Created` response with a JWT token.
 
+---
+
+## Troubleshooting & Operations
+
+### How to Restart the Application
+In Kubernetes, you do not SSH into a container to restart a process. Instead, you tell Kubernetes to restart the Pod. The Deployment will automatically spin up a fresh instance.
+
+**Method 1: The "Rollout Restart" (Industry Standard)**
+This tells the Deployment to gracefully shut down old pods and spin up new ones without downtime.
+```bash
+kubectl rollout restart deployment notes-service
+```
+
+**Method 2: The "Brute Force" Pod Delete (Faster for local Dev)**
+This simply deletes the pod. The Deployment panics and instantly creates a new one to replace it.
+```bash
+kubectl delete pod -l app=notes-service
+```
