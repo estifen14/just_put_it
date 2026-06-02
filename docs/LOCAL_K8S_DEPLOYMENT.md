@@ -42,9 +42,10 @@ helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update && 
 *Note: This creates a Deployment and a Service named `postgres-service`.*
 
 ### Step 3: Deploy the Application
-Now, apply the deployment and service manifests for the `notes_service`. Ensure your `notes-deployment.yaml` points its `SPRING_DATASOURCE_URL` to `jdbc:postgresql://postgres-service:5432/just_put_it`.
+Now, apply the deployment and service manifests for the `notes_service`. 
 
 ```bash
+kubectl apply -f services/notes_service/k8s-local/notes-configmap.yaml
 kubectl apply -f services/notes_service/k8s-local/notes-deployment.yaml
 kubectl apply -f services/notes_service/k8s-local/notes-service.yaml
 ```
@@ -79,6 +80,28 @@ You should receive a `201 Created` response with a JWT token.
 ---
 
 ## Troubleshooting & Operations
+
+### System Owner Validation Drill (Scale & Rollback)
+Run these commands one by one to demonstrate System Ownership and resilience:
+
+**1. Scale Up:** Verify you can horizontally scale without downtime.
+```bash
+kubectl scale deployment notes-service --replicas=3
+kubectl get pods -w
+```
+
+**2. Push Bad Update:** Intentionally break the application by requesting an image tag that doesn't exist.
+```bash
+kubectl set image deployment/notes-service notes-service-container=notes-service:v-broken
+kubectl get pods
+```
+*(You should see `ImagePullBackOff` or `ErrImagePull`)*
+
+**3. Rollback:** Restore the system to its last known good state.
+```bash
+kubectl rollout undo deployment/notes-service
+kubectl get pods
+```
 
 ### How to Restart the Application
 In Kubernetes, you do not SSH into a container to restart a process. Instead, you tell Kubernetes to restart the Pod. The Deployment will automatically spin up a fresh instance.
