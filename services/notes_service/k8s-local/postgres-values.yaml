@@ -1,0 +1,17 @@
+# Postgres configuration for just_put_it local lab
+fullnameOverride: postgres-service
+
+auth:
+  postgresPassword: postgres
+  database: just_put_it
+
+primary:
+  persistence:
+    enabled: false # Local-only: Don't persist data between cluster deletions
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi

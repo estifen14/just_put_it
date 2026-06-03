@@ -33,14 +33,21 @@ KIND is isolated from your local Docker environment. You must "upload" your buil
 kind load docker-image notes-service:v1 --name just-put-it-cluster
 ```
 
-### Step 2: Deploy the Database (Pre-requisite)
-Spring Boot will crash immediately if it cannot connect to its database. Before deploying the app, we must deploy PostgreSQL.
+### Step 2: Deploy the Database (Pre-requisite, Guaranteed QoS)
+Spring Boot will crash immediately if it cannot connect to its database. We deploy PostgreSQL with **Guaranteed QoS** (matching requests and limits) to ensure absolute stability.
 
 ```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update && helm install my-postgres bitnami/postgresql --set fullnameOverride=postgres-service --set auth.postgresPassword=postgres --set auth.database=just_put_it --set primary.persistence.enabled=false
+helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update
+helm install my-postgres bitnami/postgresql -f services/notes_service/k8s-local/postgres-values.yaml
 ```
-*Note: This creates a Deployment and a Service named `postgres-service`.*
+*Note: Using a `postgres-values.yaml` file is the industry standard (Infrastructure as Code) for managing complex configurations.*
 
+**Verification:**
+To verify that the database has been assigned the **Guaranteed** priority class, run:
+```bash
+kubectl get pod -l app.kubernetes.io/instance=my-postgres -o jsonpath='{.items[0].status.qosClass}'
+```
+*Explanation: This command queries the cluster for the Postgres pod and extracts the `qosClass` status field. If requests and limits match, it returns `Guaranteed`.*
 ### Step 3: Deploy the Application
 Now, apply the deployment and service manifests for the `notes_service`. 
 
