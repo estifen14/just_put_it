@@ -23,6 +23,7 @@ jobs:
       - run:
           name: Push Docker Image to GHCR
           command: |
+            USERNAME=$(echo "$GHCR_USERNAME" | tr "[:upper:]" "[:lower:]")
             IMAGE_NAME="ghcr.io/$USERNAME/just_put_it_notes_service"
             docker push $IMAGE_NAME:${CIRCLE_SHA1}
             docker push $IMAGE_NAME:latest
