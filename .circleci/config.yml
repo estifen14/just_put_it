@@ -8,23 +8,31 @@ jobs:
       - checkout
       - setup_remote_docker:
           version: docker24
+      
+      - run:
+          name: Setup Global Environment Variables
+          command: |
+            # 1. Docker requires repository names to be strictly lowercase.
+            # 2. We use 'tr' to convert GHCR_USERNAME to lowercase.
+            # 3. We save the resulting IMAGE_NAME to $BASH_ENV so it is globally available.
+            LOWER_USER=$(echo "$GHCR_USERNAME" | tr "[:upper:]" "[:lower:]")
+            echo "export IMAGE_NAME=ghcr.io/${LOWER_USER}/just_put_it_notes_service" >> $BASH_ENV
+
       - run:
           name: Build Docker Image
           command: |
             cd services/notes_service
-            USERNAME=$(echo "$GHCR_USERNAME" | tr "[:upper:]" "[:lower:]")
-            IMAGE_NAME="ghcr.io/$USERNAME/just_put_it_notes_service"
             docker build -t $IMAGE_NAME:${CIRCLE_SHA1} .
             docker tag $IMAGE_NAME:${CIRCLE_SHA1} $IMAGE_NAME:latest
+      
       - run:
           name: Authenticate with GHCR
           command: |
             echo $GHCR_PAT | docker login ghcr.io -u $GHCR_USERNAME --password-stdin
+      
       - run:
           name: Push Docker Image to GHCR
           command: |
-            USERNAME=$(echo "$GHCR_USERNAME" | tr "[:upper:]" "[:lower:]")
-            IMAGE_NAME="ghcr.io/$USERNAME/just_put_it_notes_service"
             docker push $IMAGE_NAME:${CIRCLE_SHA1}
             docker push $IMAGE_NAME:latest
 
