@@ -96,8 +96,25 @@ Type `yes` when prompted.
 5. Terraform waits for the VM to get an IP address.
 6. Terraform connects via SSH and runs the K3s installation script.
 
----
+### Step 5: Verify the Deployment
+1. Log into the Proxmox web interface and navigate to your VM. You should see it running.
+2. Check the "Summary" tab to find the assigned IP address.
+3. Open a terminal and SSH into the VM:
+```bash
+ssh -i ~/.ssh/<SSH_PRIVATE_KEY> estifen@<VM_IP_ADDRESS>
+# Example: ssh -i ~/.ssh/id_rsa_azure estifen@192.168.100.205
+```
+If you see "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!" ran this command to clear the old fingerprint:
+```bash
+ssh-keygen -R <VM_IP_ADDRESS>
+# Example: ssh-keygen -R 192.168.100.205
+```
+4. Once logged in, check that K3s is running:
+```bash
+sudo kubectl get nodes
+```
 
+---
 ## 3. ArgoCD Deployment (Next Steps)
 The current `main.tf` successfully stands up Kubernetes. Deploying ArgoCD via Terraform is possible using the `helm` provider, but it requires Terraform to securely extract the `/etc/rancher/k3s/k3s.yaml` file from the VM first. 
 

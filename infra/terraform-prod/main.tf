@@ -59,7 +59,7 @@ resource "proxmox_virtual_environment_vm" "k3s_prod_node" {
   }
 
   memory {
-    dedicated = 2048
+    dedicated = 4096
   }
 
   disk {
@@ -84,7 +84,8 @@ resource "proxmox_virtual_environment_vm" "k3s_prod_node" {
   initialization {
     ip_config {
       ipv4 {
-        address = "dhcp" # Uses your home router to assign an IP
+        address = "192.168.100.205/24" 
+        gateway = "192.168.100.1" # Ensure this matches your home router's IP
       }
     }
     user_account {
