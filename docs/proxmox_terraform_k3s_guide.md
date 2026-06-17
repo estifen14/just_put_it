@@ -47,9 +47,9 @@ qm template 9000
 
 ### C. Prepare your Mac (Estifen's Machine)
 1. Install Terraform:
-   ```bash
-   brew install terraform
-   ```
+```bash
+brew install terraform
+```
 2. **SSH Keys:** You can 100% reuse the SSH key pair you created for the `cloud-in-a-box` Azure VM. An SSH key is just a cryptographic identity; it doesn't care if it's logging into Azure or Proxmox. Ensure your public key (`~/.ssh/id_rsa.pub`) and private key (`~/.ssh/id_rsa`) are available.
 
 ---
@@ -75,6 +75,9 @@ proxmox_host         = "192.168.X.X" # Replace with your Thinkpad's IP
 proxmox_token_id     = "terraform-prov@pve!terraform-token" # Replace with your Token ID
 proxmox_token_secret = "YOUR-SECRET-UUID-HERE" # Replace with your Token Value
 ssh_public_key       = "ssh-rsa AAAAB3Nza... estifen@macbook" # Paste the contents of ~/.ssh/id_rsa.pub
+
+# NEW: The shared secret used to join the Worker to the Master
+k3s_cluster_secret   = "SuperSecretK3sPassword123!" 
 ```
 
 ### Step 3: Plan the Deployment
@@ -85,6 +88,8 @@ terraform plan
 
 ### Step 4: Apply and Build!
 ```bash
+# To see detailed logs of what Terraform is doing under the hood, you can set the log level to INFO. This is optional but can be helpful for debugging.
+# export TF_LOG=INFO
 terraform apply
 ```
 Type `yes` when prompted. 
@@ -113,9 +118,59 @@ ssh-keygen -R <VM_IP_ADDRESS>
 ```bash
 sudo kubectl get nodes
 ```
+* What to expect: You should see two rows. One named just-put-it-k3s-master (with the role control-plane,master) and one named just-put-it-k3s-worker-1 (with the role <none> or worker). Both must have the
+  STATUS Ready.
 
 ---
-## 3. ArgoCD Deployment (Next Steps)
-The current `main.tf` successfully stands up Kubernetes. Deploying ArgoCD via Terraform is possible using the `helm` provider, but it requires Terraform to securely extract the `/etc/rancher/k3s/k3s.yaml` file from the VM first. 
+## 3. Check kube-system and argocd namespaces
+1. check kube-system:
+```bash
+sudo k3s kubectl get pods -n kube-system
+```
+How to read the output:
+Look at the STATUS column.
+* Settled: Every single row says Running or Completed.
+* Not Settled: You see rows that say Pending, ContainerCreating, or CrashLoopBackOff.
 
-To maintain the "System Owner" step-by-step approach, we establish the Infrastructure (K3s) first, verify it, and then add the ArgoCD layer.
+2. check argocd:
+```bash
+sudo k3s kubectl get pods -n argocd
+```
+How to read the output:
+ArgoCD installs about 7 different components (server, repo-server, redis, application-controller, etc.).
+* Settled: Every single row says Running, AND the READY column says 1/1 (or 2/2 for some). This means the software is fully downloaded and online.
+* Not Settled: You see ContainerCreating (it is still downloading from the internet) or 0/1 in the READY column (it is downloaded but still booting up).
+
+3. The "Watch" command (Pro Tip):
+If things are still downloading, and you don't want to keep typing the command over and over, you can add -w to "watch" the status update in real-time:
+```bash
+sudo k3s kubectl get pods -n argocd -w
+````
+### If something went wrong
+- Check the logs of a specific pod:
+```bash
+sudo k3s kubectl logs argocd-applicationset-controller-b7669f646-gghvj -n argocd
+```
+- Sometimes, it just needs a forced restart:
+```bash
+sudo k3s kubectl delete pod argocd-applicationset-controller-b7669f646-gghvj -n argocd
+```
+
+---
+## Access ArgoCD Dashboard
+1. Get the ArgoCD admin password:
+```bash
+sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+```
+* Action: Copy the output (it will be a long string of random letters and numbers). Save this somewhere safe!
+2. Expose the ArgoCD UI (Port Forwarding):
+```bash
+sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
+```
+* Note: This command will "hang" in the terminal. That is normal. It is keeping the tunnel open.
+3. Log in to the ArgoCD dashboard:
+   - Open your browser and go to: `https://<VM_IP_ADDRESS>:8080`
+   - Browser Warning: Your browser will say "Your connection is not private" (because ArgoCD uses a self-signed security certificate by default). Click "Advanced" and then "Proceed to 192.168.100.205
+       (unsafe)".
+   - Username: admin
+   - Password: Paste the secret password you copied in Step 1.
