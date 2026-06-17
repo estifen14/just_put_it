@@ -80,18 +80,56 @@ ssh_public_key       = "ssh-rsa AAAAB3Nza... estifen@macbook" # Paste the conten
 k3s_cluster_secret   = "SuperSecretK3sPassword123!" 
 ```
 
-### Step 3: Plan the Deployment
-This shows you what Terraform *will* do without actually doing it.
+### Step 3: Setup Snippets and SSH Access (One-time setup)
+**Step 3.1: By default, Proxmox does not allow you to upload Snippet files.**
+**You must enable Snippet it in the Web UI:**
+1. Go to the Proxmox Web UI.
+2. Click on **Datacenter** -> **Storage** in the left menu.
+3. Double-click the storage named **local**.
+4. In the "Content" dropdown, click it and highlight **Snippets** (so it turns blue along with ISO image and VZDump).
+5. Click **OK**.
+
+**Or run this command to add snippets in the list:**
 ```bash
-terraform plan
+pvesm set local --content iso,vztmpl,backup,import,snippets
 ```
 
-### Step 4: Apply and Build!
+**Step 3.2: Copy your public key to the Proxmox's root account:**
 ```bash
-# To see detailed logs of what Terraform is doing under the hood, you can set the log level to INFO. This is optional but can be helpful for debugging.
-# export TF_LOG=INFO
-terraform apply
+ssh-copy-id -i ~/.ssh/id_rsa_azure root@192.168.100.201
 ```
+_(It will ask for your Proxmox Server's root password one last time to authorize the key)._
+> **Why must we use root?** </br>
+> The Snippet files must be uploaded directly to the Proxmox filesystem at /var/lib/vz/snippets/.
+>    1. **The API Limitation:** Proxmox does not have an API endpoint to upload text files directly to the Snippet directory. This is why the BPG provider has to use a "backdoor" SSH connection to create the file.
+>    2. **The Privilege Issue:** The bpg/proxmox provider is not smart enough to log in as your pen user, type a password, and then execute sudo. It expects to just drop the file directly into the folder.
+>    3. **The Proxmox User Model:** Users like terraform-prov or pen are "Proxmox API Users" or "PAM Users". Even if they are Administrators in the _Web UI_, that does not give them physical write permissions to the underlying Debian filesystem directory /var/lib/vz/snippets/ without using sudo.
+> 
+> _Your_ _terraform-prov_ _token is still used for 99% of the actions—creating VMs, changing RAM, setting networks. The_ _root_ _SSH is used EXCLUSIVELY for transferring the Cloud-Init text file)_
+
+**⚠️ To revoke a key (In case you change your laptop):**
+1. Run `nano ~/.ssh/authorized_keys`
+2. Identify the stolen key:
+> They usually look like this:
+> </br> 1 ssh-rsa AAAAB3NzaC1yc... estifen@Safe-Macbook
+> </br> 2 ssh-rsa AAAAC8HdfJ2zz... estifen@Stolen-Laptop
+> </br> 3 ssh-ed25519 AAAAC3Nza... root@backup-server
+
+3. Delete the line and save.
+4. Verify. Try to ssh: `ssh root@192.168.100.201`. </br>
+   _(You should get Permission Denied)_
+
+### Step 4: Plan and Apply!
+This shows you what Terraform *will* do without actually doing it.
+```bash  
+terraform plan
+```  
+Apply:
+```bash  
+# To see detailed logs of what Terraform is doing under the hood, you can set the log level to INFO. This is optional but can be helpful for debugging.  
+# export TF_LOG=INFO  
+terraform apply  
+```  
 Type `yes` when prompted. 
 **What happens next?**
 1. Terraform connects to the Proxmox API.
@@ -100,6 +138,16 @@ Type `yes` when prompted.
 4. It boots the VM. Cloud-Init injects your user (`estifen`) and your SSH key.
 5. Terraform waits for the VM to get an IP address.
 6. Terraform connects via SSH and runs the K3s installation script.
+
+**Read your new, perfect logs!**
+</br> Terraform will say Apply Complete very quickly (because it didn't wait for K3s to install). Wait about 60 seconds for the VM to finish the background work, then SSH in and read your logs:
+```bash
+ssh -i ~/.ssh/id_rsa_azure estifen@192.168.100.205
+```
+Inside the VM:
+```bash
+cat /var/log/cloud-init-output.log
+```
 
 ### Step 5: Verify the Deployment
 1. Log into the Proxmox web interface and navigate to your VM. You should see it running.

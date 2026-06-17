@@ -13,6 +13,13 @@ provider "proxmox" {
   
   # bpg/proxmox uses a combined token string: USER@REALM!TOKENID=UUID
   api_token = "${var.proxmox_token_id}=${var.proxmox_token_secret}"
+  
+  # NEW: SSH config is required by the BPG provider to upload Snippet files to Proxmox
+  ssh {
+    agent = false # Explicitly set to false so it uses the key file below instead of your Mac's agent
+    username = "root" 
+    private_key = file("~/.ssh/id_rsa_azure") # Provide the private key path directly
+  }
 }
 
 # --- Variables ---
@@ -41,6 +48,49 @@ variable "k3s_cluster_secret" {
   type        = string
   description = "A strong random password used to connect worker nodes to the master node."
   sensitive   = true
+}
+
+# =====================================================================
+# CLOUD-INIT SNIPPETS (The Industry Standard Bootstrap)
+# =====================================================================
+
+# 1. Generate the Cloud-Init file for the MASTER node
+resource "proxmox_virtual_environment_file" "master_cloud_config" {
+  content_type = "snippets"
+  datastore_id = "local" # The default storage location in Proxmox that accepts snippets
+  node_name    = "pve"
+
+  source_raw {
+    data = <<-EOF
+    #cloud-config
+    runcmd:
+      - echo "Bootstrapping K3S Master Node..."
+      - curl -sfL https://get.k3s.io | K3S_TOKEN=${var.k3s_cluster_secret} sh -s - server --cluster-init
+      - sleep 15
+      - echo "Setting up ArgoCD in the cluster..."
+      - k3s kubectl create namespace argocd
+      - k3s kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --server-side --force-conflicts
+    EOF
+    
+    file_name = "k3s-master-setup.yaml"
+  }
+}
+
+# 2. Generate the Cloud-Init file for the WORKER node
+resource "proxmox_virtual_environment_file" "worker_cloud_config" {
+  content_type = "snippets"
+  datastore_id = "local"
+  node_name    = "pve"
+
+  source_raw {
+    data = <<-EOF
+    #cloud-config
+    runcmd:
+      - curl -sfL https://get.k3s.io | K3S_URL=https://192.168.100.205:6443 K3S_TOKEN=${var.k3s_cluster_secret} sh -
+    EOF
+    
+    file_name = "k3s-worker-setup.yaml"
+  }
 }
 
 # =====================================================================
@@ -96,33 +146,15 @@ resource "proxmox_virtual_environment_vm" "k3s_prod_master" {
         gateway = "192.168.100.1" # Ensure this matches your home router's IP
       }
     }
+    
+    # Let Terraform natively handle the user and SSH key injection
     user_account {
       username = "estifen" # The username that will be created inside the VM
       keys     = [var.ssh_public_key]
     }
-  }
-
-  # --- Automated K3s Installation via SSH ---
-  connection {
-    type        = "ssh"
-    user        = "estifen"
-    private_key = file("~/.ssh/id_rsa_azure") # Reusing existing Azure SSH key
-    host        = "192.168.100.205" # Hardcoding static IP for reliable SSH connection
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo 'Waiting for cloud-init to finish background setup...'",
-      "cloud-init status --wait",
-      "echo 'Installing K3s MASTER...'",
-      "curl -sfL https://get.k3s.io | K3S_TOKEN=${var.k3s_cluster_secret} sh -s - server --cluster-init",
-      "echo 'Waiting for Kubernetes API to be ready...'",
-      "sleep 15",
-      "echo 'Installing ArgoCD (GitOps Engine)...'",
-      "sudo k3s kubectl create namespace argocd",
-      "sudo k3s kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --server-side --force-conflicts",
-      "echo 'ArgoCD installation triggered!'"
-    ]
+    
+    # Inject our custom scripts via vendor_data so we don't overwrite the user_account
+    vendor_data_file_id = proxmox_virtual_environment_file.master_cloud_config.id
   }
 }
 
@@ -164,30 +196,16 @@ resource "proxmox_virtual_environment_vm" "k3s_prod_worker_1" {
     ip_config {
       ipv4 {
         # Worker gets a different Static IP
-        address = "192.168.100.206/24" 
+        address = "192.168.100.206/24"
         gateway = "192.168.100.1"
       }
     }
+
     user_account {
       username = "estifen"
       keys     = [var.ssh_public_key]
     }
-  }
-
-  connection {
-    type        = "ssh"
-    user        = "estifen"
-    private_key = file("~/.ssh/id_rsa_azure")
-    host        = "192.168.100.206"
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo 'Waiting for cloud-init to finish background setup...'",
-      "cloud-init status --wait",
-      "echo 'Installing K3s WORKER and joining cluster...'",
-      "curl -sfL https://get.k3s.io | K3S_URL=https://192.168.100.205:6443 K3S_TOKEN=${var.k3s_cluster_secret} sh -",
-      "echo 'Worker successfully joined the cluster!'"
-    ]
+    
+    vendor_data_file_id = proxmox_virtual_environment_file.worker_cloud_config.id
   }
 }
