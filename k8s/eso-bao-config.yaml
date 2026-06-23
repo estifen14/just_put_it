@@ -1,0 +1,41 @@
+# 1. Define the SecretStore (The Connection)
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: openbao-store
+  namespace: default
+spec:
+  provider:
+    vault:
+      server: "http://openbao.default.svc.cluster.local:8200"
+      path: "secret"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "eso-role"
+          # We reference the dedicated ServiceAccount we created in the SAME namespace
+          serviceAccountRef:
+            name: "notes-app-sa"
+            audiences:
+              - "vault"
+---
+# 2. Define the ExternalSecret (The Sync Rule)
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: sync-gemini-api-key
+  namespace: default
+spec:
+  refreshInterval: "10m"
+  secretStoreRef:
+    name: openbao-store
+    kind: SecretStore
+  target:
+    name: gemini-api-secret # Your Spring Boot app will mount a secret with THIS name
+    creationPolicy: Owner
+  data:
+    - secretKey: api-key # The key name inside the Kubernetes secret
+      remoteRef:
+        key: just_put_it/prod # The path in OpenBao
+        property: gemini_api_key # The specific key we stored in Step 3
