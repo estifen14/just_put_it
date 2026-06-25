@@ -4,8 +4,8 @@ image:
 
 postgresql:
   image:
-    registry: public.ecr.aws
-    repository: bitnami/postgresql
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
   fullnameOverride: postgres-service
   auth:
     postgresPassword: postgres
