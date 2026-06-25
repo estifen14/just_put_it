@@ -3,11 +3,11 @@ apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: openbao-store
-  namespace: default
+  namespace: note-service-dev
 spec:
   provider:
     vault:
-      server: "http://openbao.default.svc.cluster.local:8200"
+      server: "http://openbao.openbao.svc.cluster.local:8200"
       path: "secret"
       version: "v2"
       auth:
@@ -25,7 +25,7 @@ apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: sync-gemini-api-key
-  namespace: default
+  namespace: note-service-dev
 spec:
   refreshInterval: "10m"
   secretStoreRef:

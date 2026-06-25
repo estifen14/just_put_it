@@ -16,6 +16,10 @@
 
 ---
 
+## Step 0: Go to your Kubernetes Cluster Context
+Before you start, ensure your terminal is connected to the correct K3s cluster context. This is critical to avoid accidentally deploying to your company's Azure Kubernetes cluster.
+See: [Proxmox K3s Context Isolation Protocol](proxmox_k3s_context_isolation_guide.md) for instructions.
+
 ## Step 1: Install OpenBao (The Central Vault)
 
 We will install OpenBao using Helm. We are using "Standalone Mode" which writes data to a local file on the K3s node, bypassing the need for a complex, multi-node Raft consensus setup.
@@ -25,8 +29,12 @@ We will install OpenBao using Helm. We are using "Standalone Mode" which writes 
 helm repo add openbao https://openbao.github.io/openbao-helm
 helm repo update
 
-# 2. Install OpenBao with local persistent storage enabled
+# 2. Create a namespace for OpenBao
+kubectl create namespace openbao
+
+# 3. Install OpenBao with local persistent storage enabled
 helm install openbao openbao/openbao \
+  -n openbao \
   --set "server.standalone.enabled=true" \
   --set "server.dataStorage.enabled=true" \
   --set "server.dataStorage.size=1Gi"
@@ -40,17 +48,17 @@ When OpenBao first starts, it is completely blank and locked. You must initializ
 # 1. Initialize the vault. 
 # 🚨 CRITICAL: This will output 5 Unseal Keys and 1 Initial Root Token. 
 # You MUST copy these and save them securely in your password manager immediately.
-kubectl exec -it openbao-0 -- bao operator init
+kubectl exec -it openbao-0 -n openbao -- bao operator init
 
 # 2. Unseal the vault. 
 # You must run this command 3 separate times. Each time it prompts you, 
 # paste a DIFFERENT Unseal Key from the 5 you saved above.
-kubectl exec -it openbao-0 -- bao operator unseal
-kubectl exec -it openbao-0 -- bao operator unseal
-kubectl exec -it openbao-0 -- bao operator unseal
+kubectl exec -it openbao-0 -n openbao -- bao operator unseal
+kubectl exec -it openbao-0 -n openbao -- bao operator unseal
+kubectl exec -it openbao-0 -n openbao -- bao operator unseal
 
 # 3. Log in to the vault using the Initial Root Token so you can issue commands
-kubectl exec -it openbao-0 -- bao login <YOUR_INITIAL_ROOT_TOKEN>
+kubectl exec -it openbao-0 -n openbao -- bao login <YOUR_INITIAL_ROOT_TOKEN>
 ```
 
 ## Step 3: Enable the Secret Engine and Store a Secret
@@ -59,10 +67,10 @@ OpenBao supports many types of secrets. We need the basic Key-Value version 2 (K
 
 ```bash
 # 1. Enable the Key-Value (v2) engine at the path named "secret"
-kubectl exec -it openbao-0 -- bao secrets enable -path=secret kv-v2
+kubectl exec -it openbao-0 -n openbao -- bao secrets enable -path=secret kv-v2
 
 # 2. Store your actual Gemini API Key inside the vault at the path 'secret/just_put_it/prod'
-kubectl exec -it openbao-0 -- bao kv put secret/just_put_it/prod gemini_api_key="YOUR_ACTUAL_API_KEY"
+kubectl exec -it openbao-0 -n openbao -- bao kv put secret/just_put_it/prod gemini_api_key="YOUR_ACTUAL_API_KEY"
 ```
 
 ## Step 4: Install External Secrets Operator (ESO)
@@ -90,24 +98,26 @@ kubectl get pods -n external-secrets
 To satisfy the **Everything as Code (ADR 005)** constraint, we will NOT use a static token. We will use the **Kubernetes Auth Method**. This allows ESO to authenticate to OpenBao using its own Kubernetes Service Account ID. Because there are no passwords, the resulting YAML files can be safely committed to Git.
 
 ### 5.1 Configure OpenBao to Trust Kubernetes
-You must run these commands to teach OpenBao how to verify Kubernetes ID cards. We will create a dedicated ServiceAccount in the `default` namespace for your application to use.
+You must run these commands to teach OpenBao how to verify Kubernetes ID cards. We will create a dedicated ServiceAccount in a namespace for your application to use.
+</br>**Note:** For the service account, you should use the same namespace that your application is using. 
+</br>You can create namespace with `kubectl create namespace <namespace>` and then use `-n <namespace>` flag.
 
 ```bash
 # 1. Create a dedicated ServiceAccount in the default namespace for fetching secrets
-	kubectl create serviceaccount notes-app-sa -n default
+kubectl create serviceaccount notes-app-sa -n note-service-dev
 
 # 2. Log into the vault using the Root Token you saved in Step 2
-kubectl exec -it openbao-0 -- bao login <YOUR_INITIAL_ROOT_TOKEN>
+kubectl exec -it openbao-0 -n openbao -- bao login <YOUR_INITIAL_ROOT_TOKEN>
 
 # 3. Enable the Kubernetes authentication method
-kubectl exec -it openbao-0 -- bao auth enable kubernetes
+kubectl exec -it openbao-0 -n openbao -- bao auth enable kubernetes
 
 # 4. Tell OpenBao how to talk to the K3s Master node
-kubectl exec -it openbao-0 -- sh -c 'bao write auth/kubernetes/config \
+kubectl exec -it openbao-0 -n openbao -- sh -c 'bao write auth/kubernetes/config \
     kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT"'
 
 # 5. Create a policy that allows reading the secret/ path
-kubectl exec -it openbao-0 -- sh -c 'bao policy write eso-policy - <<EOF
+kubectl exec -it openbao-0 -n openbao -- sh -c 'bao policy write eso-policy - <<EOF
 path "secret/data/*" {
   capabilities = ["read", "list"]
 }
@@ -115,9 +125,9 @@ EOF'
 
 # 6. Create a role that binds the new ServiceAccount to the policy
 # OpenBao requires an "audience" parameter for Kubernetes Auth (usually the vault URL or cluster name)
-kubectl exec -it openbao-0 -- bao write auth/kubernetes/role/eso-role \
+kubectl exec -it openbao-0 -n openbao -- bao write auth/kubernetes/role/eso-role \
     bound_service_account_names=notes-app-sa \
-    bound_service_account_namespaces=default \
+    bound_service_account_namespaces=note-service-dev \
     policies=eso-policy \
     audience="vault" \
     ttl=1h
@@ -133,11 +143,11 @@ apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: openbao-store
-  namespace: default
+  namespace: note-service-dev
 spec:
   provider:
     vault:
-      server: "http://openbao.default.svc.cluster.local:8200"
+      server: "http://openbao.openbao.svc.cluster.local:8200"
       path: "secret"
       version: "v2"
       auth:
@@ -155,7 +165,7 @@ apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: sync-gemini-api-key
-  namespace: default
+  namespace: note-service-dev
 spec:
   refreshInterval: "10m"
   secretStoreRef:
@@ -182,11 +192,11 @@ Check if the pipeline worked. ESO should have connected to OpenBao, read the API
 
 ```bash
 # 1. Check ESO status. Look for 'STATUS: SecretSynced'
-kubectl get externalsecret sync-gemini-api-key
+kubectl get externalsecret sync-gemini-api-key -n note-service-dev
 
 # 2. Check if the final Kubernetes secret exists. 
 # If this exists, your application can now mount it.
-kubectl get secret gemini-api-secret
+kubectl get secret gemini-api-secret -n note-service-dev
 ```
 
 ---
@@ -204,10 +214,10 @@ You can force ESO to clear its memory cache and re-read the token by "touching" 
 
 ```bash
 # 1. Force the SecretStore to update and re-authenticate
-kubectl annotate secretstore openbao-store force-sync=$(date +%s) --overwrite
+kubectl annotate secretstore openbao-store force-sync=$(date +%s) --overwrite -n openbao
 
 # 2. Force the ExternalSecret to re-fetch the data
-kubectl annotate externalsecret sync-gemini-api-key force-sync=$(date +%s) --overwrite
+kubectl annotate externalsecret sync-gemini-api-key force-sync=$(date +%s) --overwrite -n openbao
 ```
 
 *Wait about 10 seconds, then run the verification commands in Step 6 again.*
