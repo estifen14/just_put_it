@@ -3,6 +3,9 @@ image:
   tag: "latest"
 
 postgresql:
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/postgresql
   fullnameOverride: postgres-service
   auth:
     postgresPassword: postgres
