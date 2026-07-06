@@ -35,6 +35,24 @@ jobs:
           command: |
             docker push $IMAGE_NAME:${CIRCLE_SHA1}
             docker push $IMAGE_NAME:latest
+      
+      - run:
+          name: CD Handoff - Update GitOps Repository
+          command: |
+            # Clone the GitOps repository using the PAT for authentication
+            git clone https://estifen14:${GHCR_PAT}@github.com/estifen14/just_put_it-argo_cd.git
+            cd just_put_it-argo_cd
+            
+            # Update the image tag to the exact Git SHA
+            sed -i.bak "s/tag: .*/tag: \"${CIRCLE_SHA1}\"/" helm/notes-service/values.yaml
+            rm helm/notes-service/values.yaml.bak
+            
+            # Configure Git identity and push
+            git config --global user.email "circleci-bot@justputit.com"
+            git config --global user.name "CircleCI Bot"
+            git add helm/notes-service/values.yaml
+            git commit -m "chore: deploy notes-service ${CIRCLE_SHA1}"
+            git push origin main
 
 workflows:
   main-workflow:
